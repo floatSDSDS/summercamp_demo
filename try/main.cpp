@@ -6,7 +6,7 @@
 using namespace std;
 using namespace cv;
 
-#define IMAGE_SIZE_SCALE 2
+#define IMAGE_SIZE_SCALE 5
 
 
 #define HsvType int
@@ -20,13 +20,13 @@ using namespace cv;
 #define BGR_G 6
 #define BGR_R 7
 
-
+void getPosition(const Point2f p1,  const Point2f  p2, Point2f &goal);
 void eraseGround(Mat &src);
 Mat colorConversion(Mat img, HsvType imgtype);
 void lowExposureGrid(const Mat src,Mat &result,Point2f &goal,
-                     float &minD,bool &find_object);
-void lowExposureWAWA(const Mat src,Mat &result,
-                     bool &find_object,bool &WAWA);
+                     float &minD,bool &find_object,Mat &mask);
+void lowExposureWAWA(const Mat src,Mat &result,Point2f &goal,
+                     float &minD,bool &find_object,bool &WAWA);
 
 
 
@@ -43,56 +43,69 @@ int main()
 //        capture>>src;
 /******************************************************************************/
 /********************************Video tester**********************************/
-    VideoCapture capture("/home/sd/document/videocapture/3.avi");
-    if(capture.isOpened())  cout<<"Oops"<<endl;
-    while(1){
-        capture>>src;
+//    VideoCapture capture("/home/sd/document/videocapture/3.avi");
+//    if(capture.isOpened())  cout<<"Oops"<<endl;
+//    while(1){
+//        capture>>src;
 /********************************Img tester************************************/
 //    src=imread("/home/sd/document/graph/8_7/REGION4/g20160807_021252.112.jpg");
 //    src=imread("/home/sd/document/graph/8_7/REGION4/g20160807_021245.088.jpg");
 //    src=imread("/home/sd/document/graph/8_7/REGION4/g20160807_021258.515.jpg");
+    src=imread("/home/sd/document/graph/8_7/GRID/SE3/g20160807_021921.218.jpg");
+    src=imread("/home/sd/document/graph/8_7/GRID/SE4/g20160807_021928.246.jpg");
+    src=imread("/home/sd/document/graph/8_7/GRID/SE3/g20160807_021921.218.jpg");
 /******************************************************************************/
     resize(src,src,Size(src.cols/IMAGE_SIZE_SCALE,src.rows/IMAGE_SIZE_SCALE));
 
 
 
 
+/******************************************************************************/
 /*erase Ground*/
 //      eraseGround(src);
-/*low exposure mode*/
-    Mat dst;
-    bool find_object,WAWA;
-    /*Grid*/
-        //lowExposureGrid(src,dst,goal,minD,find_object);
-    /*WAWA*/
-        lowExposureWAWA(src,dst,find_object,WAWA);
-    if(find_object){
-        if(WAWA)    cout<<"octopus"<<endl;
-        else        cout<<"hippo"<<endl;
-    }
-    else {
-        if(WAWA)    cout<<"need little more closer"<<endl;
-        else        cout<<"missing WAWA"<<endl;
 
-    }
+/******************************************************************************/
+/*low exposure mode*/
+    Mat dst,mask;
+    Point2f goal;
+    float minD;
+    bool find_object,WAWA;
+/******************************************************************************/
+    /*Grid*/
+    lowExposureGrid(src,dst,goal,minD,find_object,mask);
+/******************************************************************************/
+    /*WAWA*/
+//        lowExposureWAWA(src,dst,goal,minD,find_object,WAWA);
+//    if(find_object){
+//        if(WAWA)    cout<<"octopus"<<endl;
+//        else        cout<<"hippo"<<endl;
+//    }
+//    else {
+//        if(WAWA)    cout<<"need little more closer"<<endl;
+//        else        cout<<"missing WAWA"<<endl;
+
+//    }
+/******************************************************************************/
 
 
 
 
 /******************************************************************************/
-        waitKey(250);
-    }
+//        waitKey(100);
+//    }
 /******************************************************************************/
     waitKey(0);
     return 0;
 }
 
-
-
-
-
-
-Mat colorConversion(Mat img, HsvType imgtype){
+void getPosition(const Point2f p1, const Point2f p2, Point2f &goal)
+{
+    goal.x=p2.x-p1.x;
+    goal.y=p2.y-p1.y;
+    cout<<goal<<endl;
+}
+Mat colorConversion(Mat img, HsvType imgtype)
+{
     GaussianBlur(img, img, Size(5,5),0,0);
     if(imgtype==HSV||imgtype==HSV_H||imgtype==HSV_S||imgtype==HSV_V){
         Mat img_hsv, img_h, img_s, img_v;
@@ -102,6 +115,12 @@ Mat colorConversion(Mat img, HsvType imgtype){
         img_h = hsv_channels[0];
         img_s = hsv_channels[1];
         img_v = hsv_channels[2];
+
+        /*display*/
+//        imshow("h",img_h);
+//        imshow("s",img_s);
+//        imshow("v",img_v);
+
         switch (imgtype){
         case 0:
             return img_hsv;
@@ -122,21 +141,30 @@ Mat colorConversion(Mat img, HsvType imgtype){
         g_img=bgr_channels[1];
         r_img=bgr_channels[2];
 
+        /*display*/
+//        imshow("b",b_img);
+//        imshow("g",g_img);
+//        imshow("r",r_img);
+
         switch(imgtype){
         case 4:
             return img;
         case 5:
-            return b_img;
+            return b_img;imshow("r",r_img);
         case 6:
             return g_img;
         case 7:
+
             return r_img;
         }
 
     }
     return img;
 }
-void eraseGround(Mat &src){
+
+
+void eraseGround(Mat &src)
+{
     Mat img_h, img_threshold,img_canny;
     img_h=colorConversion(src, BGR_R);
     imshow("1_img_h",img_h);
@@ -149,13 +177,38 @@ void eraseGround(Mat &src){
     img_canny.copyTo(src);
 }
 
-void lowExposureWAWA(const Mat src,Mat &result,bool &find_object,bool &WAWA)
+void lowExposureGrid(const Mat src,Mat &result,Point2f &goal,
+                float &minD,bool &find_object,Mat &mask)
+{
+    /*initialize*/
+    find_object=false;
+    imshow("src",src);
+    minD=22222;
+    goal=Point(0,0);
+
+    Mat temp;
+    src.copyTo(temp);
+    medianBlur(temp,temp,5);
+    Mat element = getStructuringElement(0, Size(15, 15));
+    morphologyEx(temp,temp, MORPH_DILATE,  element);
+    Mat imgBlue=colorConversion(temp,BGR_B);
+    Mat imgRed=colorConversion(temp,BGR_R);
+    /*get channel_Red & channel_Blue*/
+
+
+
+
+
+}
+
+
+void lowExposureWAWA(const Mat src,Mat &result,Point2f &goal,
+                     float &minD,bool &find_object,bool &WAWA)
 {
     /*initialize the flag*/
     /*WAWA:false=hippo;*/
     find_object=false;
     WAWA=false;
-    imshow("src",src);
     result=colorConversion(src,HSV_V);
 
     /*smooth using medianBlur*/
@@ -168,7 +221,7 @@ void lowExposureWAWA(const Mat src,Mat &result,bool &find_object,bool &WAWA)
     imshow("binary",result);
 
     /*morphology closing*/
-    Mat element = getStructuringElement(MORPH_RECT,Size(10,10));
+    Mat element = getStructuringElement(MORPH_RECT,Size(15,15));
     morphologyEx(result,result,MORPH_CLOSE,element);
     imshow("CLOSEING",result);
 
@@ -176,43 +229,51 @@ void lowExposureWAWA(const Mat src,Mat &result,bool &find_object,bool &WAWA)
     /*retrieve contours_external*/
     vector<vector<Point> >contours;
     vector<Vec4i> hierarchy;
-    findContours(result, contours, hierarchy,CV_RETR_EXTERNAL,CHAIN_APPROX_SIMPLE);
+    findContours(result, contours, hierarchy,CV_RETR_TREE,CHAIN_APPROX_SIMPLE);
     if(contours.size()==0)  return;
     cout<<"size_external"<<contours.size()<<endl;
 
     /*display source img with every contours*/
     drawContours(src,contours,-1,Scalar(200),3);
-    imshow("final",src);
+    imshow("src",src);
     /*return if there is no WAWA being targeted*/
     Vector<float> area;
+    int idx;
     for(int i=0;i<contours.size();i++)
-        area.push_back(contourArea(contours[i]));
-    float Parea=*max_element(area.begin(),area.end())/(src.cols*src.rows);
-    cout<<"Parea:"<<Parea<<endl;
-    if(Parea<0.01)
     {
+        area.push_back(contourArea(contours[i]));
+        if(area[i]==*max_element(area.begin(),area.end()))
+            idx=i;
+    }
+    float Parea=area[idx]/(src.cols*src.rows);
+    cout<<"Parea:"<<Parea<<endl;
+
+    /*retrieve moments and output*/
+    Moments mom=moments(contours[idx], false);
+    Point2f target=Point(mom.m10/mom.m00,mom.m01/mom.m00);
+    Point2f center=Point(src.cols/2,src.rows/2);
+
+    if(Parea<0.1)
+    {
+        getPosition(center,target,goal);
         WAWA=true;
         return;
     }
 
     /*set ROI with filled contours*/
-    Mat mask=Mat(src.size(),src.depth(),Scalar::all(0));
-    drawContours(mask,contours,-1,Scalar::all(255),CV_FILLED);
-    findContours(mask, contours, hierarchy,CV_RETR_LIST,CHAIN_APPROX_SIMPLE);
-    drawContours(result,contours,-1,Scalar::all(255),3);
-    cout<<"contoooooours"<<contours.size()<<endl;
-    imshow("mask",mask);
-    imshow("gudetama",result);
+    int counter=0;
+    for(int i=0;i<contours.size();i++){
+        if(hierarchy[i][3]==idx)    counter++;
+    }
+    drawContours(result,contours,-1,Scalar::all(255),2);
+    cout<<"contoooooours:"<<counter<<endl;
 
     /*tell what the WAWA is*/
      find_object=true;
-     if(contours.size()>2)
+     if(counter>0|contours.size()>1)
      {
          WAWA=true;
          return;
      }
-
 }
-
-
 
